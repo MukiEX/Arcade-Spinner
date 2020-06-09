@@ -17,12 +17,16 @@
 */
 
 #include "Mouse.h"
-#include <Joystick.h>
+#include "Joystick.h"
 
                  
 #define pinA 2    //The pins that the rotary encoder's A and B terminals are connected to.
 #define pinB 3
+#define mousePinL 4
+#define mousePinR 5
+#define pinPot A0
 #define maxBut 6  //The number of buttons you are using up to 10.
+
 
 
 //Create a Joystick object.
@@ -42,6 +46,7 @@ volatile int rotPosition = 0;
 
 volatile int rotMulti = 0;
 
+float rotSpeed = 0.5;
 
 //Set the initial last state of the buttons depending on the max number of buttons defined in maxBut
 
@@ -131,7 +136,7 @@ void pinChange() {
      combinedReading == 0b1101 || 
      combinedReading == 0b0100) {
      
-     rotPosition++;                   //update the position of the encoder
+     rotPosition--;                   //update the position of the encoder
 
   }
 
@@ -141,7 +146,7 @@ void pinChange() {
      combinedReading == 0b1110 ||
      combinedReading == 0b1000) {
      
-     rotPosition--;                   //update the position of the encoder
+     rotPosition++;                   //update the position of the encoder
      
   }
 
@@ -160,11 +165,20 @@ void loop(){
   //and update the rotPosition variable to reflect that we have moved the mouse. The mouse will move 1/2 
   //the number of pixels of the value currently in the rotPosition variable. We are using 1/2 (rotPosition>>1) because the total number 
   //of transitions(positions) on our encoder is 2400 which is way too high. 1200 positions is more than enough.
+  rotSpeed = map((analogRead(pinPot)+1),0,1023,0,25);
+  if (rotSpeed > 0) {rotSpeed = rotSpeed / 25;}
+  rotSpeed = 1 - rotSpeed;
+  int MouseLeft = digitalRead(mousePinL);
+  int MouseRight = digitalRead(mousePinR);
+
+  if (MouseLeft == LOW) { if (!Mouse.isPressed(MOUSE_LEFT)){ Mouse.press(MOUSE_LEFT);}} else { if (Mouse.isPressed(MOUSE_LEFT)){ Mouse.release(MOUSE_LEFT);}}
+
+  if (MouseRight == LOW) { if (!Mouse.isPressed(MOUSE_RIGHT)){ Mouse.press(MOUSE_RIGHT);}} else { if (Mouse.isPressed(MOUSE_RIGHT)){ Mouse.release(MOUSE_RIGHT);}}
   
   if(rotPosition >= 1 || rotPosition <= -1) {
-    rotMulti = rotPosition>> 1;                 //copy rotPosition/2 to a temporary variable in case there's an interrupt while we're moving the mouse 
-    Mouse.move(rotMulti,0,0);
-    rotPosition -= (rotMulti<< 1);              //adjust rotPosition to account for mouse movement
+    rotMulti = (rotPosition * rotSpeed);
+    Mouse.move((rotMulti),0,0);
+    rotPosition -= (rotMulti / rotSpeed);              //adjust rotPosition to account for mouse movement
   }
 
 
@@ -239,11 +253,11 @@ void loop(){
        */
     }
     //If the current state of the pin for each button is different than last time, update the joystick button state
-    if(currentButtonState != lastButtonState[button])
-      Joystick.setButton(button, !currentButtonState);
+    //if(currentButtonState != lastButtonState[button])
+     // Joystick.setButton(button, !currentButtonState);
       
     //Save the last button state for each button for next time
-    lastButtonState[button] = currentButtonState;
+    //lastButtonState[button] = currentButtonState;
 
     ++button;
   } while (button < maxBut);
