@@ -18,15 +18,18 @@
 
 #include "Mouse.h"
 #include "Joystick.h"
+#include "Gamepad.h"
 
-                 
+Gamepad_ Gamepad;
+const char *gp_serial = "MiSTer-A1 JogCon";
+
+#define spinDirection true // Set to "false" if the spinner is moving in the wrong direction.
 #define pinA 2    //The pins that the rotary encoder's A and B terminals are connected to.
 #define pinB 3
 #define mousePinL 4
 #define mousePinR 5
 #define pinPot A0
 #define maxBut 6  //The number of buttons you are using up to 10.
-
 
 
 //Create a Joystick object.
@@ -45,6 +48,9 @@ volatile int previousReading = 0;
 volatile int rotPosition = 0;
 
 volatile int rotMulti = 0;
+volatile int paddlePos  = 0;
+boolean paddleDrive;
+boolean paddleMode = false;
 
 float rotSpeed = 0.5;
 
@@ -90,6 +96,8 @@ int lastButtonState[maxBut] = {1,1,1,1,1,1,1,1,1};
 int lastButtonState[maxBut] = {1,1,1,1,1,1,1,1,1,1};
 #endif
 
+
+
 void setup() {
   //No need to set the pin modes with DDRx = DDRx | 0b00000000 as we're using all input and that's the initial state of the pins
   //Use internal input resistors for all the pins we're using  
@@ -110,6 +118,27 @@ void setup() {
   //Set up the interrupt handler for the encoder's A and B terminals on digital pins 2 and 3 respectively. Both interrupts use the same handler.
   attachInterrupt(digitalPinToInterrupt(pinA), pinChange, CHANGE); 
   attachInterrupt(digitalPinToInterrupt(pinB), pinChange, CHANGE);
+
+  int MouseLeft = digitalRead(mousePinL);
+  int MouseRight = digitalRead(mousePinR);
+  Gamepad.reset();
+
+  // Joystick mode?
+  if ((MouseLeft == LOW)&&(MouseRight == LOW)) 
+		  {
+		  }
+  // Driving Pot Mode
+	  else if ((MouseLeft == LOW)&&(MouseRight != LOW)) 
+		  {
+		paddleMode = true;
+		paddleDrive = true;
+		  }
+  // Paddle Pot Mode
+	  else if ((MouseLeft != LOW)&&(MouseRight == LOW)) 
+		  {
+		paddleMode = true;
+		paddleDrive = false;
+		  }
 
   //Start the mouse
   Mouse.begin();
@@ -135,8 +164,10 @@ void pinChange() {
      combinedReading == 0b1011 ||
      combinedReading == 0b1101 || 
      combinedReading == 0b0100) {
-     
-     rotPosition--;                   //update the position of the encoder
+
+     //update the position of the encoder
+     if (spinDirection) { rotPosition++; } 
+     else { rotPosition--; }
 
   }
 
@@ -145,8 +176,8 @@ void pinChange() {
      combinedReading == 0b0111 ||
      combinedReading == 0b1110 ||
      combinedReading == 0b1000) {
-     
-     rotPosition++;                   //update the position of the encoder
+     if (spinDirection) { rotPosition--; }
+     else { rotPosition++; }
      
   }
 
@@ -154,6 +185,15 @@ void pinChange() {
   //Save the previous state of the A and B terminals for next time
   previousReading = currentReading;
 }
+
+// Clears screen between stats outputs
+void clearScreen(){
+	Serial.write(27);
+	Serial.print("[2J");
+	Serial.write(27);
+	Serial.print("[H");
+}
+
 
 
 void loop(){ 
@@ -165,22 +205,28 @@ void loop(){
   //and update the rotPosition variable to reflect that we have moved the mouse. The mouse will move 1/2 
   //the number of pixels of the value currently in the rotPosition variable. We are using 1/2 (rotPosition>>1) because the total number 
   //of transitions(positions) on our encoder is 2400 which is way too high. 1200 positions is more than enough.
-  rotSpeed = map((analogRead(pinPot)+1),0,1023,0,25);
-  if (rotSpeed > 0) {rotSpeed = rotSpeed / 25;}
-  rotSpeed = 1 - rotSpeed;
+  int rotPot = map((analogRead(pinPot)+1),0,1023,25,1);
+  rotSpeed = (float)rotPot / 25;
+
   int MouseLeft = digitalRead(mousePinL);
   int MouseRight = digitalRead(mousePinR);
 
-  if (MouseLeft == LOW) { if (!Mouse.isPressed(MOUSE_LEFT)){ Mouse.press(MOUSE_LEFT);}} else { if (Mouse.isPressed(MOUSE_LEFT)){ Mouse.release(MOUSE_LEFT);}}
-
-  if (MouseRight == LOW) { if (!Mouse.isPressed(MOUSE_RIGHT)){ Mouse.press(MOUSE_RIGHT);}} else { if (Mouse.isPressed(MOUSE_RIGHT)){ Mouse.release(MOUSE_RIGHT);}}
+  if (MouseLeft == LOW)
+	  if (paddleMode) {}
+	  else { if (!Mouse.isPressed(MOUSE_LEFT)){ Mouse.press(MOUSE_LEFT);}} else { if (Mouse.isPressed(MOUSE_LEFT)){ Mouse.release(MOUSE_LEFT);}}
+  if (MouseRight == LOW)
+	  if (paddleMode) {}
+	  else { if (!Mouse.isPressed(MOUSE_RIGHT)){ Mouse.press(MOUSE_RIGHT);}} else { if (Mouse.isPressed(MOUSE_RIGHT)){ Mouse.release(MOUSE_RIGHT);}}
   
   if(rotPosition >= 1 || rotPosition <= -1) {
     rotMulti = (rotPosition * rotSpeed);
-    Mouse.move((rotMulti),0,0);
     rotPosition -= (rotMulti / rotSpeed);              //adjust rotPosition to account for mouse movement
+    paddlePos += rotMulti;
+    if (paddlePos > 1023) { if (paddleDrive) { paddlePos = 1023;} else { paddlePos -= 1023;} }
+    if (paddlePos < 0) { if (paddleDrive) { paddlePos = 0;} else { paddlePos += 1023;} }
+    if (paddleMode) { Gamepad._GamepadReport.paddle = paddlePos; Gamepad.send(); }
+	    else { Mouse.move((rotMulti),0,0);}
   }
-
 
 
   //Iterate through the 10 buttons (0-9) assigning the current state of the pin for each button, HIGH(0b00000001) or LOW(0b00000000), to the currentState variable
