@@ -31,7 +31,7 @@ const char *gp_serial = "MiSTer-A1 JogCon";
 #define pinPot A0
 #define maxBut 6  //The number of buttons you are using up to 10.
 
-
+/******************************************
 //Create a Joystick object.
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID,JOYSTICK_TYPE_GAMEPAD,
   maxBut, 0,             // Button Count, Hat Switch Count
@@ -39,6 +39,7 @@ Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID,JOYSTICK_TYPE_GAMEPAD,
   false, false, false,   // No Rx, Ry, or Rz
   false, false,          // No rudder or throttle
   false, false, false);  // No accelerator, brake, or steering;
+******************************************/
 
 
 //The previous state of the AB pins
@@ -51,11 +52,12 @@ volatile int rotMulti = 0;
 volatile int paddlePos  = 0;
 boolean paddleDrive;
 boolean paddleMode = false;
+static uint16_t paddleBTN = 0;
 
 float rotSpeed = 0.5;
 
 //Set the initial last state of the buttons depending on the max number of buttons defined in maxBut
-
+/******************************
 #if maxBut==1
 int lastButtonState[maxBut] = {1};
 #endif
@@ -97,6 +99,7 @@ int lastButtonState[maxBut] = {1,1,1,1,1,1,1,1,1,1};
 #endif
 
 
+******************************/
 
 void setup() {
   //No need to set the pin modes with DDRx = DDRx | 0b00000000 as we're using all input and that's the initial state of the pins
@@ -109,11 +112,11 @@ void setup() {
   //PORTF = 0b11000000; //Digital pin A0 & A1
   
   //Start the joystick
-  Joystick.begin();
+  //Joystick.begin();
   
   //Center the X and Y axes on the joystick
-  Joystick.setXAxis(511);
-  Joystick.setYAxis(511);
+  //Joystick.setXAxis(511);
+  //Joystick.setYAxis(511);
   
   //Set up the interrupt handler for the encoder's A and B terminals on digital pins 2 and 3 respectively. Both interrupts use the same handler.
   attachInterrupt(digitalPinToInterrupt(pinA), pinChange, CHANGE); 
@@ -210,29 +213,47 @@ void loop(){
 
   int MouseLeft = digitalRead(mousePinL);
   int MouseRight = digitalRead(mousePinR);
+  int btn_left = 0x00;
+  int btn_right = 0x00;
 
   if (MouseLeft == LOW)
-	  if (paddleMode) {}
-	  else { if (!Mouse.isPressed(MOUSE_LEFT)){ Mouse.press(MOUSE_LEFT);}} else { if (Mouse.isPressed(MOUSE_LEFT)){ Mouse.release(MOUSE_LEFT);}}
+	{ 
+	if (paddleMode){btn_left = 0x40;} else if (!Mouse.isPressed(MOUSE_LEFT)){ Mouse.press(MOUSE_LEFT);}
+	}
+  else {
+	if (paddleMode){btn_left = 0x00;} else if (Mouse.isPressed(MOUSE_LEFT)){ Mouse.release(MOUSE_LEFT);}
+  	}
+
   if (MouseRight == LOW)
-	  if (paddleMode) {}
-	  else { if (!Mouse.isPressed(MOUSE_RIGHT)){ Mouse.press(MOUSE_RIGHT);}} else { if (Mouse.isPressed(MOUSE_RIGHT)){ Mouse.release(MOUSE_RIGHT);}}
-  
+	{ 
+	if (paddleMode){btn_right = 0x20;} else if (!Mouse.isPressed(MOUSE_RIGHT)){ Mouse.press(MOUSE_RIGHT);}
+	}
+  else {
+	if (paddleMode){btn_right = 0x00;} else if (Mouse.isPressed(MOUSE_RIGHT)){ Mouse.release(MOUSE_RIGHT);}
+  	}
+
+
+  paddleBTN = (btn_left | btn_right) << 8;
+
   if(rotPosition >= 1 || rotPosition <= -1) {
     rotMulti = (rotPosition * rotSpeed);
     rotPosition -= (rotMulti / rotSpeed);              //adjust rotPosition to account for mouse movement
     paddlePos += rotMulti;
-    if (paddlePos > 1023) { if (paddleDrive) { paddlePos = 1023;} else { paddlePos -= 1023;} }
-    if (paddlePos < 0) { if (paddleDrive) { paddlePos = 0;} else { paddlePos += 1023;} }
-    if (paddleMode) { Gamepad._GamepadReport.paddle = paddlePos; Gamepad.send(); }
+    if (paddlePos > 254) { if (paddleDrive) { paddlePos = 254;} else { paddlePos -= 254;} }
+    if (paddlePos < 0) { if (paddleDrive) { paddlePos = 0;} else { paddlePos += 254;} }
+    if (paddleMode) {
+		    Gamepad._GamepadReport.paddle = paddlePos; Gamepad.send();
+		    Gamepad._GamepadReport.buttons = (paddleBTN & 0xF) | ((paddleBTN>>4) & ~0xF);
+		    }
 	    else { Mouse.move((rotMulti),0,0);}
   }
 
+    /**********************************
 
   //Iterate through the 10 buttons (0-9) assigning the current state of the pin for each button, HIGH(0b00000001) or LOW(0b00000000), to the currentState variable
   int button = 0;
   do {
-    switch ( button ) {
+       switch ( button ) {
       case 0:  //on digital pin 4, PD4 - Arcade Button 0
         currentButtonState = (PIND & 0b00010000) >> 4; //logical AND the 8-bit pin reading with a mask to isolate the specific bit we're interested in and then shift it to the end of the byte
         break;
@@ -266,6 +287,7 @@ void loop(){
       default: //should never happen
         currentButtonState = 0b00000000;
         break;
+    **********************/
 
     /*Pro Micro 10 buttons (2 unused) Craig B
      * switch ( button ) {
@@ -296,7 +318,6 @@ void loop(){
       default: //Extra digital pins 16, PB2 and 14, PB3
         currentButtonState = 0b00000000;
         break;
-       */
     }
     //If the current state of the pin for each button is different than last time, update the joystick button state
     //if(currentButtonState != lastButtonState[button])
@@ -308,4 +329,5 @@ void loop(){
     ++button;
   } while (button < maxBut);
 
+       */
 }
